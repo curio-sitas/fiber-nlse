@@ -51,13 +51,7 @@ class FiberNLSE:
 
     def initDispersion2(self, β2):
         self.β = β2  # β must start at the second order β2
-        self.D = -self.β*0.5*1j*(2*np.pi*self.F)**2*np.ones((self.Nl, len(self.F)),dtype=complex)
-
-    def initDispersion2NonUniform(self, β2):
-        self.β = β2  # β must start at the second order β2
-        self.D = np.ones((self.Nl, len(self.F)),dtype=complex)
-        for i in range(self.Nl):
-            self.D[i,:] = -self.β(i*self.dl)*0.5*1j*(2*np.pi*self.F)**2
+        self.D = -self.β*0.5*1j*(2*np.pi*self.F)**2
 
     def calculateN(self, A):
         return 1j * np.abs(A) ** 2 * self.γ
@@ -65,15 +59,15 @@ class FiberNLSE:
     def simulate(self):
         # return A, A_fft, F, T, L
         for i in tqdm(range(1, self.Nl)):
-            self.A[i] = self.step_forward(self.A[i - 1], self.D[i,:])
+            self.A[i] = self.step_forward(self.A[i - 1])
         return self.A
 
     # TODO: RK4
-    def step_forward(self, A, D):
+    def step_forward(self, A):
         h = self.dl
 
         N = self.calculateN(A)  # Nonlinear operator
-        Ai = np.fft.ifft(np.exp(0.5 * h * (D-0.5*self.α)) * np.fft.fft(A))  # disp on half step
+        Ai = np.fft.ifft(np.exp(0.5 * h * (self.D-0.5*self.α)) * np.fft.fft(A))  # disp on half step
         Ai = np.exp(h * N) * Ai  # full step NL
-        Ai = np.fft.ifft(np.exp(0.5 * h * (D-0.5*self.α)) * np.fft.fft(Ai))  # disp on half step
+        Ai = np.fft.ifft(np.exp(0.5 * h * (self.D-0.5*self.α)) * np.fft.fft(Ai))  # disp on half step
         return Ai
