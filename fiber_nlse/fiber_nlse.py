@@ -1,5 +1,6 @@
 import math
 import numpy as np
+import pyfftw
 from tqdm import tqdm
 
 
@@ -64,8 +65,13 @@ class FiberNLSE:
 
     # TODO: RK4
     def step_forward(self, A):
-        h = self.dl
 
+        h = self.dl
+        x = pyfftw.empty_aligned(self.N, dtype="complex128")
+        X = pyfftw.empty_aligned(self.N, dtype="complex128")
+        plan_forward = pyfftw.FFTW(x, X)
+        plan_inverse = pyfftw.FFTW(X, x, direction="FFTW_BACKWARD")
+        
         N = self.calculateN(A)  # Nonlinear operator
         Ai = np.fft.ifft(np.exp(0.5 * h * (self.D-0.5*self.α)) * np.fft.fft(A))  # disp on half step
         Ai = np.exp(h * N) * Ai  # full step NL
