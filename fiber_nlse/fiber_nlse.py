@@ -1,79 +1,65 @@
-import math
 import numpy as np
-import pyfftw
 from tqdm import tqdm
 
 
-# Reference : https://doi.org/10.1364/OE.18.008261
+class Fiber:
+    def __init__(self, L:int, α:float, β2: float, γ:float) -> None:
 
-# Define space-time grid
-
-# Define β function over z and nth order
-
-
-class FiberNLSE:
-
-    #def __init__(self):
-        # make default inits
-
-
-    def initDimensions(self, DT, Nt, L, Nl):
-        self.DT = DT
+        self.α = α
         self.L = L
-        self.Nt = Nt
-        self.Nl = Nl
-        self.dt = self.DT / Nt
-        self.dl = L / Nl
-
-        self.F = np.fft.fftfreq(Nt, d=self.dt)
-
-    def initPrepulse(self, f):
-        self.T = 0.5*np.linspace(-self.DT, self.DT, self.Nt)
-        self.A = np.zeros((self.Nl, self.Nt), dtype=complex)
-        self.A[0, :] = f(self.T)
-
-    def initPrepulseArray(self, Ap):
-        self.T = 0.5*np.linspace(-self.DT, self.DT, self.Nt)
-        self.A = np.zeros((self.Nl, self.Nt), dtype=complex)
-        self.A[0, :] = Ap
-
-    def initNonLinearity(self, γ):
+        self.β2 = β2
         self.γ = γ
 
-    def initLosses(self, α):
-        self.α = α
+class SegmentSimulation:
+    def __init__(self, fiber: Fiber, N_l, N_t, u0, T0:float, loader=True) -> None:
 
-    # TODO: dos not work
-    # TODO: create a dispersion model class
-    def initUniformDispersion(self, β):
-        self.β = β  # β must start at the second order β2
-        self.D = np.sum([1j**(2*i+1)*(2 * np.pi * self.F) ** (i + 2) * float(self.β[i]) / math.factorial(i + 1) for i in range(len(self.β))])
+        self.loader = loader
+        self.fiber = fiber
+        self.N_l = N_l
+        self.N_t = N_t
+        self.T0 = T0
+        self.dt = T0/N_t
+        self.U = np.zeros((N_l, N_t), dtype=np.complex)
+        self.t = np.linspace(0,1, N_t)*T0
+        self.U[0,:] = u0(self.t)
+        self.ν = np.fft.fftfreq(len(self.t), d=self.dt)
+
+    def load_fiber(self, fiber):
+        self.fiber = fiber
+    def NL(self,u):
+        return 1j * np.abs(u) ** 2 * self.fiber.γ
+    def DISP(self):
+        return -self.fiber.β2*0.5*1j*(2*np.pi*self.ν)**2
+
+    def nlse_step(self, u):
+
+        α = self.fiber.α
+        dl = self.fiber.L/self.N_l
+        ui = np.fft.ifft(np.exp(0.5 * dl * (self.DISP()-0.5*α)) * np.fft.fft(u))  # disp on half step
+        ui = np.exp(dl * self.NL(ui)) * ui  # full step NL
+        ui = np.fft.ifft(np.exp(0.5 * dl * (self.DISP()-0.5*α)) * np.fft.fft(ui))  # disp on half step
+        return ui
+
+    def run(self):
+        if(self.loader):
+            for i in tqdm(range(1,self.N_l)):
+                self.U[i] = self.nlse_step(self.U[i-1])
+        else:
+            for i in tqdm(range(1,self.N_l)):
+                self.U[i] = self.nlse_step(self.U[i-1])
+        return (self.t, self.U)
 
 
-    def initDispersion2(self, β2):
-        self.β = β2  # β must start at the second order β2
-        self.D = -self.β*0.5*1j*(2*np.pi*self.F)**2
+#TODO
 
-    def calculateN(self, A):
-        return 1j * np.abs(A) ** 2 * self.γ
+"""
 
-    def simulate(self):
-        # return A, A_fft, F, T, L
-        for i in tqdm(range(1, self.Nl)):
-            self.A[i] = self.step_forward(self.A[i - 1])
-        return self.A
+* Implement multi-segment simulation
+* Add self steepening
+* Add raman diffusion
+* Add Autocorrelation
+* Add visualizations
+* Implement RK4 integration
+* Implement multi-threading
 
-    # TODO: RK4
-    def step_forward(self, A):
-
-        h = self.dl
-        x = pyfftw.empty_aligned(self.N, dtype="complex128")
-        X = pyfftw.empty_aligned(self.N, dtype="complex128")
-        plan_forward = pyfftw.FFTW(x, X)
-        plan_inverse = pyfftw.FFTW(X, x, direction="FFTW_BACKWARD")
-        
-        N = self.calculateN(A)  # Nonlinear operator
-        Ai = np.fft.ifft(np.exp(0.5 * h * (self.D-0.5*self.α)) * np.fft.fft(A))  # disp on half step
-        Ai = np.exp(h * N) * Ai  # full step NL
-        Ai = np.fft.ifft(np.exp(0.5 * h * (self.D-0.5*self.α)) * np.fft.fft(Ai))  # disp on half step
-        return Ai
+"""
